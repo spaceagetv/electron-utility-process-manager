@@ -1,0 +1,25 @@
+{
+  "extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"target": "es2017",
+		"outDir": "./lib-examples",
+    "module": "CommonJS",
+		"paths": {
+			"@3fv/electron-utility-process-manager": [
+				"../lib/cjs"
+			],
+			"@3fv/electron-utility-process-manager/main": [
+				"../lib/cjs/main"
+			],
+			"@3fv/electron-utility-process-manager/node": [
+				"../lib/cjs/node"
+			],
+			"@3fv/electron-utility-process-manager/renderer": [
+				"../lib/cjs/renderer"
+			],
+		}
+	},
+	"exclude": ["lib-examples", "node_modules", "../lib"],
+	
+}
+
