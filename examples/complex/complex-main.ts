@@ -1,19 +1,28 @@
 // Modules to control application life and create native browser window
-import { app, BrowserWindow, MessageChannelMain, utilityProcess } from "electron"
-
-
-import path from "node:path"
+import { app, BrowserWindow } from "electron"
+import { UPM } from "@3fv/electron-utility-process-manager"
+import type { UPMMainService } from "@3fv/electron-utility-process-manager/main"
 import Tracer from "tracer"
+import Path from "path"
+import { type PingPongExampleService } from "./complex-types"
 
-const log = Tracer.console()
+const log = Tracer.colorConsole()
+let upmService: UPMMainService = null
 
-function createWindow () {
-  // Create the browser window.
+/**
+ * Boilerplate
+ *
+ * > Note: this can be done via a preload script,
+ *     but for the sake of simplicity, we are just
+ *     disabling all security here
+ *
+ * @returns {Promise<void>}
+ */
+async function createWindow(): Promise<void> {
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1000,
+    height: 1000,
     webPreferences: {
-      // preload: path.join(__dirname, 'preload.js'),
       contextIsolation: false,
       nodeIntegration: true,
       sandbox: false,
@@ -21,45 +30,72 @@ function createWindow () {
     }
   })
   
-  // and load the index.html of the app.
-  mainWindow.loadFile('index.html')
+  // Load the sample page
+  const htmlFile = Path.resolve(__dirname, "..", "..", "..", "examples", "complex", "complex-renderer.html")
+  mainWindow.webContents.openDevTools({ mode: "right" })
   
-  // Open the DevTools.
-  // mainWindow.webContents.openDevTools()
+  await mainWindow.loadFile(htmlFile)
+  
+  
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
-  const { port1, port2 } = new MessageChannelMain()
+async function start() {
+  const upm = await import("@3fv/electron-utility-process-manager/main")
+  const upmManager = upm.upmMainServiceManager
   
-  const child = utilityProcess.fork(path.join(__dirname, 'utility-process.js'))
-  child.postMessage({ message: 'here-is-your-port' }, [port1])
-  port2.start()
-  child.on("message", ev => {
-    log.info("Main child message received", ev)
-    
-  } )
-  port2.on("message", ev => {
-    log.info("Main received message ON PORT", ev)
-    port2.postMessage({name: "test123"})
+  Object.assign(global, {
+    upm,
+    upmManager
   })
   
-  createWindow()
+  log.info("UPM manager ready, now creating service", upmManager)
+  upmService = await upmManager.createService<PingPongExampleService>("complex", Path.join(__dirname, "complex-node.js"))
+  log.info("UPM service ready")
   
-  app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
+  upmService.sendEvent("test123")
+  
+  const clientPort = upmManager.createMainChannel("complex", "main-channel-01")
+  log.info("Start the client port")
+  if (UPM.isMessagePort(clientPort))
+    clientPort.start()
+  
+  log.info("Post a message directly")
+  clientPort.postMessage({
+    channel: UPM.IPCChannel.UPMServiceMessage,
+    payload: { kind: UPM.MessageKind.Event, messageId: -1, data: { test: "test456" } }
+  })
+  
+  log.info("Send event via the UPMMainService wrapper")
+  upmService.sendEvent({ test: "test789" }, clientPort)
+  
+  log.info(`Creating port client`)
+  const messageClient = upmManager.createMainClient<PingPongExampleService>("complex", "main-client-01"),
+    serviceClient = messageClient.getServiceClient()
+  
+  log.info(`Send request/response: ping`)
+  
+  const msgPongResult = await messageClient.executeRequest("ping", "main")
+  log.info(`msgPongResult=${msgPongResult}`)
+  
+  const servicePongResult = await serviceClient.ping("main")
+  log.info(`servicePongResult=${servicePongResult}`)
+  
+  log.info(`Create the window/renderer`)
+  await createWindow()
+  
+  app.on("activate", function() {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
-})
+}
+
+// When App is READY
+app.whenReady().then(start)
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
-app.on('window-all-closed', function () {
-  if (process.platform !== 'darwin') app.quit()
+app.on("window-all-closed", function() {
+  if (process.platform !== "darwin") app.quit()
 })
 
 // In this file you can include the rest of your app's specific main process

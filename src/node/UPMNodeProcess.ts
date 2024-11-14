@@ -1,6 +1,6 @@
 import { assert, isPromise } from "@3fv/guard"
 import { match } from "ts-pattern"
-import { UPM } from "../UPMTypes"
+import * as UPM from "../common"
 import Tracer from "tracer"
 import { Future } from "@3fv/prelude-ts"
 

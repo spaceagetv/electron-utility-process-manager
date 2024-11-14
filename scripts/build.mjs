@@ -1,12 +1,9 @@
 #!/usr/bin/env node
 
-import { $, argv, fs as Fs, path as Path, echo, usePwsh, which } from "zx"
-// import Path from "path"
-// import Fs from "fs"
 import Sh from "shelljs"
+import { $, argv, echo, fs as Fs, path as Path } from "zx"
 
 $.verbose = true
-//usePwsh()
 
 const scriptDir = import.meta.dirname
 const rootDir = Path.resolve(scriptDir, "..")

@@ -2,10 +2,11 @@ import { app, MessageChannelMain, MessagePortMain, utilityProcess, UtilityProces
 import { assert, getValue, isString } from "@3fv/guard"
 import Fsx from "fs-extra"
 import { Deferred } from "@3fv/deferred"
-import { UPM } from "../UPMTypes"
+import * as UPM from "../common"
 import { isEmpty, negate } from "lodash"
 
 import Tracer from "tracer"
+import { IServiceClient } from "../common"
 
 const log = Tracer.colorConsole()
 const isNotEmpty = negate(isEmpty)
@@ -17,7 +18,7 @@ export type UPMMainServiceOptions = Partial<UPMMainServiceConfig>
 export class UPMMainService<
   ReqMap extends UPM.MessageRequestMap = any,
   MType extends UPM.MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>
-> implements UPM.IServiceClient<
+> implements UPM.IMessageClient<
   ReqMap, MType
 > {
   private readonly config_: UPMMainServiceConfig
@@ -106,8 +107,25 @@ export class UPMMainService<
    *
    * @returns {any}
    */
-  whenReady(): Promise<UPM.IServiceClient<ReqMap, MType>> {
+  whenReady(): Promise<UPM.IMessageClient<ReqMap, MType>> {
     return this.init()
+  }
+  
+  /**
+   * Return a simple proxy facade wrapping
+   * `executeRequest` into individual methods
+   */
+  getServiceClient(): IServiceClient<ReqMap, MType> {
+    return new Proxy<IServiceClient<ReqMap, MType>>({} as any, {
+      get: (_target, prop) => {
+        if (prop === "then") {
+          return undefined
+        }
+        return (...args: any[]) => this.whenReady()
+          .then(client => client.executeRequest(prop as MType, ...args as any))
+        
+      }
+    })
   }
 
   /**
@@ -146,10 +164,10 @@ export class UPMMainService<
    * (useful to avoid congestion on default child_process channel)
    *
    * @param {string} clientId
-   * @returns {UPM.PortServiceClient<MessageRequestMap, MessageType>}
+   * @returns {UPM.MessagePortClient<MessageRequestMap, MessageType>}
    */
-  createMainClient(clientId: string): UPM.PortServiceClient<ReqMap, MType> {
-    return new UPM.PortServiceClient(clientId, this.createMessageChannel(clientId))  
+  createMainClient(clientId: string): UPM.MessagePortClient<ReqMap, MType> {
+    return new UPM.MessagePortClient(clientId, this.createMessageChannel(clientId))
   }
 
   private onPortClose(id: string, channel: MessageChannelMain) {

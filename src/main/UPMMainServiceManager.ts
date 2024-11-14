@@ -1,7 +1,7 @@
 import { ipcMain } from "electron"
 import { assert, isString } from "@3fv/guard"
 import { Future } from "@3fv/prelude-ts"
-import { UPM } from "../UPMTypes"
+import * as UPM from "../common"
 import UPMMainService from "./UPMMainService"
 
 import Tracer from "tracer"
@@ -94,9 +94,9 @@ export class UPMMainServiceManager {
    * @param serviceName
    */
   getService<
-      Args extends UPM.MessageRequestMap,
-      Type extends UPM.MessageRequestNames<Args>
-  >(serviceName: string): UPMMainService<Args, Type> {
+      ReqMap extends UPM.MessageRequestMap,
+      Type extends UPM.MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>
+  >(serviceName: string): UPMMainService<ReqMap, Type> {
     return this.services_.has(serviceName) ? this.services_.get(serviceName) : null
   }
   
@@ -106,7 +106,10 @@ export class UPMMainServiceManager {
    * @param serviceName
    * @param entryFile
    */
-  async createService(serviceName: string, entryFile: string): Promise<UPMMainService<any,any>> {
+  async createService<
+    ReqMap extends UPM.MessageRequestMap,
+    Type extends UPM.MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>
+  >(serviceName: string, entryFile: string): Promise<UPMMainService<ReqMap,Type>> {
     assert(!this.services_.has(serviceName), `utility process with id (${serviceName}) is already registered`)
     const proc = new UPMMainService(serviceName, entryFile, {
       serviceName

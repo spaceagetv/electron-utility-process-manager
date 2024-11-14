@@ -1,4 +1,4 @@
-import { UPM } from "../UPMTypes"
+import * as UPM from "../common"
 import { Deferred } from "@3fv/deferred"
 import { ipcRenderer } from "electron"
 import { assert } from "@3fv/guard"
@@ -11,8 +11,8 @@ export class UPMRendererClientFactory {
   static async createClient<
     ReqMap extends UPM.MessageRequestMap = any,
     MType extends UPM.MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>
-  >(serviceName: string, clientId: string = "renderer"): Promise<UPM.PortServiceClient<ReqMap, MType>> {
-    const deferred =  new Deferred<UPM.PortServiceClient<ReqMap,MType>>()
+  >(serviceName: string, clientId: string = "renderer"): Promise<UPM.MessagePortClient<ReqMap, MType>> {
+    const deferred =  new Deferred<UPM.MessagePortClient<ReqMap,MType>>()
     
     const onNewClient = (ev: Electron.IpcRendererEvent, data:{serviceName: string, clientId: string}) => {
       try {
@@ -27,7 +27,7 @@ export class UPMRendererClientFactory {
             deferred.reject(Error("A least 1 port must be transferred"))
           } else {
             const port = ev.ports[0]
-            deferred.resolve(new UPM.PortServiceClient(clientId, port))
+            deferred.resolve(new UPM.MessagePortClient(clientId, port))
           }
         }
       } catch (err) {
