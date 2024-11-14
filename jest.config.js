@@ -10,9 +10,7 @@ module.exports = {
     ],
     
     transform: {
-      // "src/.*\\.ts": "ts-jest"
-      //...tsjPreset.transform,
-      
+    
     },
     moduleFileExtensions: [
       "ts",

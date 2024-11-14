@@ -2,6 +2,12 @@
   "name": "@3fv/electron-utility-process-manager",
   "version": "1.0.0",
   "description": "electron-utility-process-manager",
+  "author": "Jonathan Glanz",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/3fv/electron-utility-process-manager/issues"
+  },
+  "homepage": "https://github.com/3fv/electron-utility-process-manager#readme",
   "main": "./lib/cjs/index.js",
   "module": "./lib/mjs/index.js",
   "types": "./lib/mjs/index.d.ts",
@@ -44,7 +50,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/3fv/electron-utility-process-manager.git"
+    "url": "https://github.com/3fv/electron-utility-process-manager.git"
   },
   "keywords": [
     "typescript",
@@ -57,12 +63,6 @@
     "**/*.map",
     "package.json"
   ],
-  "author": "Jonathan Glanz",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/3fv/electron-utility-process-manager/issues"
-  },
-  "homepage": "https://github.com/3fv/electron-utility-process-manager#readme",
   "dependencies": {
     "@3fv/deferred": "latest",
     "@3fv/guard": "latest",

@@ -3,18 +3,8 @@
 
 ## Overview
 
-With so many logging libraries out there, and the fact that I felt I was creating the same boilerplate configs with
-different libs depending on target platforms as well as logging backends, etc. I finally decided to implement a simple
-logging framework that's meant to be used with other frameworks & loggers; `Tracer`, `Morgan`, `Winston`.
-
-Works across `browser` & `node` & `deno`
-
-Now, that is a fairly common statement from those that write logging frameworks including the aforementioned; but this
-is truly meant to be a `proxy` & with that it enables things like backend async context stacks. i.e. default config goes
-to a file appender, but your job's also have an additional append via an async context (Think `ThreadLocal` in
-the `java` or `std::thread_local` in `c++` ).
-
-`@3fv/electron-utility-process-manager` hotswap logging backends
+`@3fv/electron-utility-process-manager` manages `1..n` `Electron.utilityProcess` instances/services/processes via a 
+single library & provides fully typed client facades automatically 
 
 ## Install
 
@@ -24,134 +14,153 @@ yarn add @3fv/electron-utility-process-manager
 
 ## Usage
 
-### Basic
+This library integrates into the `node`, `main` and `renderer` processes to provide 
+transparent access from any process to a `node` (`Electron.utilityProcess`).
+
+### Possible Use-cases 
+
+- main -> node
+- renderer -> node
+- node -> node
+
+### Examples
+
+#### Simple Example
+
+> NOTE: The simple example uses the bare-bones approach
+> and basically avoids typing wherever possible.  For a 
+> fully typed example, checkout the [complex example](#complex-example)
+
+##### Node/Utility Process ([simple-node.ts](examples/simple/simple-node.ts))
 
 ```typescript
-import {
-  getLogger,
-  LevelNames, getLoggingManager
-} from "@3fv/electron-utility-process-manager"
+import upmNodeProcess from "@3fv/electron-utility-process-manager/node"
 
-
-getLoggingManager().configure({
-  // Default appenders list is [ConsoleAppender], 
-  // so the following is not needed and only 
-  // remains as an example:
-  //
-  // appenders: [new ConsoleAppender()],
-  rootLevel: "trace"
+upmNodeProcess.addEventHandler((clientId, port, payload) => {
+  console.info(`Received event from (${clientId})`, payload)
+  return true
 })
 
-const log = getLogger(__filename)
-
-LevelNames.forEach((name) =>
-  log[name].call(log, `example %s`, name)
-)
-
+upmNodeProcess.addRequestHandler("ping", async (type, messageId, what: string) => {
+  console.info(`Ping request received (${messageId})`, what)
+  return `pong: ${what}`
+})
 ```
 
-### Context Stacks (the coolest bit)
-
-For verboseness as well as the fact I'm lazy, here's a complete unit test illustrating the capabilities (in `jest`)
+##### Main Process ([simple-main.ts](examples/simple/simple-main.ts)) 
 
 ```typescript
-import {
-  Appender,
-  getLoggingManager,
-  LogContext,
-  Logger,
-  getLogger
-} from "@3fv/electron-utility-process-manager"
+import { app, BrowserWindow } from "electron"
+import { UPM } from "@3fv/electron-utility-process-manager"
+import type { UPMMainService } from "@3fv/electron-utility-process-manager/main"
+import Path from "path"
 
-type Jest = typeof jest
-type MockAppender = Appender & {
-  append: Appender["append"] & ReturnType<Jest["fn"]>
+let upmService: UPMMainService = null
+
+async function start() {
+  const upm = await import("@3fv/electron-utility-process-manager/main")
+  const upmManager = upm.upmMainServiceManager
+  
+  Object.assign(global, {
+    upm,
+    upmManager
+  })
+  
+  console.info("UPM manager ready, now creating service", upmManager)
+  upmService = await upmManager.createService("simple", Path.join(__dirname, "simple-node.js"))
+  console.info("UPM service ready")
+  
+  upmService.sendEvent("test123")
+  
+  const clientPort = upmManager.createMainChannel("simple", "main-channel-01")
+  console.info("Start the client port")
+  if (UPM.isMessagePort(clientPort))
+    clientPort.start()
+  
+  console.info("Post a message directly")
+  clientPort.postMessage({
+    channel: UPM.IPCChannel.UPMServiceMessage,
+    payload: { kind: UPM.MessageKind.Event, messageId: -1, data: { test: "test456" } }
+  })
+  
+  console.info("Send event via the UPMMainService wrapper")
+  upmService.sendEvent({ test: "test789" }, clientPort)
+  
+  console.info(`Creating port client`)
+  const client = upmManager.createMainClient("simple", "main-client-01")
+  console.info(`Send request/response: ping`)
+  
+  const pongResult = await client.executeRequest("ping", ["main"])
+  console.info(`Received pong response`, pongResult)
+  
+  await createWindow()
+  
+  app.on("activate", function() {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
 }
 
-function newMockAppender(): MockAppender {
-  const fn = jest.fn((record: any) => {
-    console.log(`record`, record)
+
+/**
+ * Boilerplate
+ *
+ * > Note: this can be done via a preload script,
+ *     but for the sake of simplicity, we are just
+ *     disabling all security here
+ *
+ * @returns {Promise<void>}
+ */
+async function createWindow(): Promise<void> {
+  const mainWindow = new BrowserWindow({
+    width: 1000,
+    height: 1000,
+    webPreferences: {
+      contextIsolation: false,
+      nodeIntegration: true,
+      sandbox: false,
+      devTools: true
+    }
   })
-  return {
-    append: fn
-  }
+  
+  const htmlFile = Path.resolve(__dirname, "..", "..", "..", "examples", "simple", "simple-renderer.html")
+  mainWindow.webContents.openDevTools({ mode: "right" })
+  
+  await mainWindow.loadFile(htmlFile)
 }
 
-describe("NodeContextProvider", () => {
-  jest.setTimeout(10000)
-  
-  const manager = getLoggingManager()
-  let baseAppender: MockAppender
-  let contextAppender1: MockAppender
-  let contextAppender2: MockAppender
-  let context1: LogContext
-  let context2: LogContext
-  let log1: Logger
-  let log2: Logger
-  
-  beforeEach(() => {
-    baseAppender = newMockAppender()
-    
-    contextAppender1 = newMockAppender()
-    contextAppender2 = newMockAppender()
-    
-    context1 = LogContext.with([contextAppender1])
-    context2 = LogContext.with([contextAppender2])
-    
-    manager.setAppenders(baseAppender).setRootLevel("debug")
-    
-    log1 = getLogger("log1")
-    log2 = getLogger("log2")
-  })
-  
-  it("works with no contexts", async () => {
-    log1.info("test1")
-    log2.info("test2")
-    
-    expect(baseAppender.append).toBeCalledTimes(2)
-  })
-  
-  it("works with no context provider", async () => {
-    log1.info("test1")
-    await context1.use(async () => {
-      log1.info("test2")
-    })
-    
-    expect(baseAppender.append).toBeCalledTimes(2)
-    expect(contextAppender1.append).toBeCalledTimes(0)
-  })
-  
-  it("works with 1 contexts", async () => {
-    
-    // You must explicitly `install` the context provider to use contexts
-    await import("@3fv/electron-utility-process-manager/context/providers/node")
-    
-    log1.info("test1")
-    await context1.use(async () => {
-      log1.info("test2")
-    })
-    
-    expect(baseAppender.append).toBeCalledTimes(2)
-    expect(contextAppender1.append).toBeCalledTimes(1)
-  })
-  
-  it("works with n contexts", async () => {
-    
-    // You must explicitly `install` the context provider to use contexts
-    await import("@3fv/electron-utility-process-manager/context/providers/node")
-    
-    log1.info("test1")
-    await context1.use(async () => {
-      log1.info("test2")
-      await context2.use(async () => {
-        log1.info("test3")
-      })
-    })
-    
-    expect(baseAppender.append).toBeCalledTimes(3)
-    expect(contextAppender1.append).toBeCalledTimes(2)
-    expect(contextAppender2.append).toBeCalledTimes(1)
-  })
+app.whenReady().then(start)
+
+app.on("window-all-closed", function() {
+  if (process.platform !== "darwin") app.quit()
 })
 
 ```
+
+##### Renderer Process ([simple-renderer.ts](examples/simple/simple-renderer.ts))
+
+```typescript
+import UPMRendererClientFactory from "@3fv/electron-utility-process-manager/renderer"
+
+document.querySelector("#root").innerHTML = `simple-renderer-example`
+
+async function simpleExampleUPM() {
+  const client = await UPMRendererClientFactory.createClient("simple",`${process.type}-01`)
+  const result = await client.executeRequest("ping", [process.type])
+  console.info(`Result: ${result}`)
+}
+
+simpleExampleUPM()
+  .catch(err => console.error(`renderer error: ${err.message}`, err))
+
+export {}
+```
+
+#### Complex Example
+
+Checkout the [source here](examples/complex), it's basically the simple example,
+but fully typed
+
+## TODO
+
+- [ ] CI/CD
+- [ ] Tests
