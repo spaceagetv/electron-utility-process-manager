@@ -1,6 +1,6 @@
 {
   "name": "@3fv/electron-utility-process-manager",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "electron-utility-process-manager",
   "author": "Jonathan Glanz",
   "license": "MIT",
@@ -40,7 +40,8 @@
     "test": "yarn run build && jest",
     "test:watch": "yarn run build && jest --watchAll --no-cache",
     "test:dev": "run-s build && run-p test:watch build:watch",
-    "preversion": "yarn build && yarn test",
+    "preversion": "yarn build",
+    "preversion::with-tests": "yarn build && yarn test",
     "clean": "./scripts/clean.sh",
     "postversion": "node ./scripts/release.mjs latest",
     "release": "yarn build  && yarn version --patch --non-interactive"
