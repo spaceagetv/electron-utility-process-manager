@@ -1,5 +1,5 @@
 // Modules to control application life and create native browser window
-import { app, BrowserWindow, MessageChannelMain, utilityProcess } from "electron"
+import { app, BrowserWindow } from "electron"
 import { UPM } from "@3fv/electron-utility-process-manager"
 import type { UPMMainService } from "@3fv/electron-utility-process-manager/main"
 
@@ -42,6 +42,7 @@ async function createWindow(): Promise<void> {
 async function start() {
   const upm = await import("@3fv/electron-utility-process-manager/main")
   const upmManager = upm.upmMainServiceManager
+
   Object.assign(global, {
     upm,
     upmManager
@@ -51,28 +52,28 @@ async function start() {
   upmService = await upmManager.createService("simple", Path.join(__dirname, "simple-node.js"))
   log.info("UPM service ready")
   
-  // upmService.sendEvent("test123")
-  //
-  // const clientPort = upmManager.createMainChannel("simple", "main-channel-01")
-  // log.info("Start the client port")
-  // if (UPM.isMessagePort(clientPort))
-  //   clientPort.start()
-  //
-  // log.info("Post a message directly")
-  // clientPort.postMessage({
-  //   channel: UPM.IPCChannel.UPMServiceMessage,
-  //   payload: { kind: UPM.MessageKind.Event, messageId: -1, data: { test: "test456" } }
-  // })
-  //
-  // log.info("Send event via the UPMMainService wrapper")
-  // upmService.sendEvent({ test: "test789" }, clientPort)
-  //
+  upmService.sendEvent("test123")
+
+  const clientPort = upmManager.createMainChannel("simple", "main-channel-01")
+  log.info("Start the client port")
+  if (UPM.isMessagePort(clientPort))
+    clientPort.start()
+
+  log.info("Post a message directly")
+  clientPort.postMessage({
+    channel: UPM.IPCChannel.UPMServiceMessage,
+    payload: { kind: UPM.MessageKind.Event, messageId: -1, data: { test: "test456" } }
+  })
+
+  log.info("Send event via the UPMMainService wrapper")
+  upmService.sendEvent({ test: "test789" }, clientPort)
+
   log.info(`Creating port client`)
   const client = upmManager.createMainClient("simple", "main-client-01")
   log.info(`Send request/response: ping`)
   
-  const pongResult = await client.executeRequest("ping", "main")
-  log.info(`Received request/response`, pongResult)
+  const pongResult = await client.executeRequest("ping", ["main"])
+  log.info(`Received pong response`, pongResult)
   
   log.info(`Create the window/renderer`)
   await createWindow()

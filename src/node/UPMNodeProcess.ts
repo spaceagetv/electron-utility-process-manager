@@ -1,22 +1,21 @@
 import { assert, isPromise } from "@3fv/guard"
 import { match } from "ts-pattern"
 import { UPM } from "../UPMTypes"
-import type { UtilityProcess } from "electron"
 import Tracer from "tracer"
 import { Future } from "@3fv/prelude-ts"
 
 const log = Tracer.colorConsole()
 
 export class UPMNodeProcess<
-  MessageArgs extends UPM.MessageArgs = any,
-  MessageType extends UPM.MessageArgNames<MessageArgs> = UPM.MessageArgNames<MessageArgs>
+  ReqMap extends UPM.MessageRequestMap = any,
+  MType extends UPM.MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>
 >
 {
   readonly processPort = process.parentPort
   
   private readonly clientPorts_ = new Map<string, Electron.MessagePortMain>()
   
-  private readonly requestHandlers_ = new Map<MessageType, UPM.RequestHandler<MessageArgs, MessageType>>()
+  private readonly requestHandlers_ = new Map<MType, UPM.RequestHandler<ReqMap, MType>>()
   
   private readonly eventHandlers_ = Array<UPM.EventHandler>()
   
@@ -48,7 +47,7 @@ export class UPMNodeProcess<
   
   private async onServiceMessage(clientId: string, port: UPM.Port, payload: UPM.Message<any, any>) {
     log.info(`onServiceMessage from (clientId=${clientId})`, payload)
-    const { messageId, kind, data, type } = payload
+    const { messageId, kind, args, eventData, type } = payload
     await match(kind)
       .with(UPM.MessageKind.Request, async () => {
         try {
@@ -58,36 +57,38 @@ export class UPMNodeProcess<
           )
           
           const handler = this.requestHandlers_.get(type)
-          const result = await handler(type, messageId, data)
-          port.postMessage({
-            channel: UPM.IPCChannel.UPMServiceMessage,
-            payload: //{ kind: UPM.MessageKind.Event, messageId: -1, data: { test: "test456" } }
-              {
-                type,
-                kind: UPM.MessageKind.Response,
-                messageId,
-                data: result
-              }
-          })
+          const result = await handler(type, messageId, ...args as any),
+            msg:UPM.NodeMessage<ReqMap, MType> = {
+              channel: UPM.IPCChannel.UPMServiceMessage,
+              payload: {
+                  type,
+                  kind: UPM.MessageKind.Response,
+                  messageId,
+                  result
+                }
+            }
+          
+          port.postMessage(msg)
         } catch (err) {
           log.error(`Unable to handle message`, err)
-          port.postMessage({
+          const msg:UPM.NodeMessage<ReqMap, MType> = {
             channel: UPM.IPCChannel.UPMServiceMessage,
-            payload: //{ kind: UPM.MessageKind.Event, messageId: -1, data: { test: "test456" } }
+            payload:
               {
                 type,
                 kind: UPM.MessageKind.Response,
                 messageId,
-                data: null,
+                result: null,
                 error: err.message ?? err.toString()
               }
-          })
+          }
+          port.postMessage(msg)
         }
       })
       .with(UPM.MessageKind.Event, async () => {
         try {
           for (const handler of this.eventHandlers_) {
-            let res = handler(clientId, port, data)
+            let res = handler(clientId, port, eventData)
             if (isPromise(res)) {
               const resPromise = res as Promise<boolean>
               res = await resPromise
@@ -129,7 +130,7 @@ export class UPMNodeProcess<
     this.processPort.on("message", (message: Electron.MessageEvent) => this.onMessage(this.processPort, message))
   }
   
-  addRequestHandler<Type extends MessageType>(type: Type, handler: UPM.RequestHandler<MessageArgs, Type>) {
+  addRequestHandler<Type extends MType>(type: Type, handler: UPM.RequestHandler<ReqMap, Type>) {
     log.info(`Registering request handler for type (${type.toString()})`)
     this.requestHandlers_.set(type, handler)
   }

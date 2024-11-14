@@ -40,6 +40,7 @@ ElectronMon({
     `!src`,
     `!src/**/*`,
     `!**.ts`,
+    `!**/*~`,
     // `!**/*.*`,
     '!node_modules',
     '!node_modules/**/*',

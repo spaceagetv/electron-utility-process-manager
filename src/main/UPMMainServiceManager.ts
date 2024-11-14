@@ -46,8 +46,8 @@ export class UPMMainServiceManager {
   
   createMainChannel
   <
-    Args extends UPM.MessageArgs = any,
-    MType extends UPM.MessageArgNames<Args> = UPM.MessageArgNames<Args>,
+    Args extends UPM.MessageRequestMap = any,
+    MType extends UPM.MessageRequestNames<Args> = UPM.MessageRequestNames<Args>,
   >
   (serviceOrName: string | UPMMainService<Args, MType>, clientId: string): UPM.Port {
     try {
@@ -63,10 +63,10 @@ export class UPMMainServiceManager {
   }
   
   createMainClient<
-    Args extends UPM.MessageArgs = any,
-    MType extends UPM.MessageArgNames<Args> = UPM.MessageArgNames<Args>,
+    ReqMap extends UPM.MessageRequestMap = any,
+    MType extends UPM.MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>,
   >(serviceName: string, clientId: string) {
-    const service = this.getService<Args,MType>(serviceName)
+    const service = this.getService<ReqMap,MType>(serviceName)
     assert(!!service,`no proc found for ${serviceName}`)
     
     try {
@@ -94,8 +94,8 @@ export class UPMMainServiceManager {
    * @param serviceName
    */
   getService<
-      Args extends UPM.MessageArgs,
-      Type extends UPM.MessageArgNames<Args>
+      Args extends UPM.MessageRequestMap,
+      Type extends UPM.MessageRequestNames<Args>
   >(serviceName: string): UPMMainService<Args, Type> {
     return this.services_.has(serviceName) ? this.services_.get(serviceName) : null
   }

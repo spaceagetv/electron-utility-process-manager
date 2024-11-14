@@ -15,10 +15,10 @@ export interface UPMMainServiceConfig {}
 export type UPMMainServiceOptions = Partial<UPMMainServiceConfig>
 
 export class UPMMainService<
-  MessageArgs extends UPM.MessageArgs = any,
-  MessageType extends UPM.MessageArgNames<MessageArgs> = UPM.MessageArgNames<MessageArgs>
+  ReqMap extends UPM.MessageRequestMap = any,
+  MType extends UPM.MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>
 > implements UPM.IServiceClient<
-  MessageArgs, MessageType
+  ReqMap, MType
 > {
   private readonly config_: UPMMainServiceConfig
 
@@ -73,8 +73,8 @@ export class UPMMainService<
     return deferred.promise
   }
 
-  private onMessage<Type extends MessageType = any>(payload: UPM.Message<MessageArgs, Type>) {
-    const { type, kind, messageId, data, error } = payload
+  private onMessage<Type extends MType = any>(payload: UPM.Message<ReqMap, Type>) {
+    const { type, kind, messageId, result, error } = payload
 
     try {
       const pending = this.pendingMessages_.get(messageId)
@@ -94,7 +94,7 @@ export class UPMMainService<
         pending.deferred.reject(new Error(error))
         return
       }
-      pending.deferred.resolve(data)
+      pending.deferred.resolve(result)
     } catch (err) {
       log.error(`Failed to handle message`, err)
     }
@@ -106,7 +106,7 @@ export class UPMMainService<
    *
    * @returns {any}
    */
-  whenReady(): Promise<UPM.IServiceClient<MessageArgs, MessageType>> {
+  whenReady(): Promise<UPM.IServiceClient<ReqMap, MType>> {
     return this.init()
   }
 
@@ -146,9 +146,9 @@ export class UPMMainService<
    * (useful to avoid congestion on default child_process channel)
    *
    * @param {string} clientId
-   * @returns {UPM.PortServiceClient<MessageArgs, MessageType>}
+   * @returns {UPM.PortServiceClient<MessageRequestMap, MessageType>}
    */
-  createMainClient(clientId: string): UPM.PortServiceClient<MessageArgs, MessageType> {
+  createMainClient(clientId: string): UPM.PortServiceClient<ReqMap, MType> {
     return new UPM.PortServiceClient(clientId, this.createMessageChannel(clientId))  
   }
 
@@ -189,31 +189,30 @@ export class UPMMainService<
    * Send request
    *
    * @param type
-   * @param data
-   * @param port
-   * @param timeout
+   * @param args
    */
-  async executeRequest<Type extends MessageType, R = any>(
+  async executeRequest<
+    Type extends MType,
+    R extends UPM.MessageRequestReturnType<ReqMap,Type> = UPM.MessageRequestReturnType<ReqMap,Type>
+  >(
     type: Type,
-    data: UPM.MessageArgData<MessageArgs, Type>,
-    port: UPM.Port = this.childProcess_,
-    timeout: number = UPM.Defaults.RequestTimeout
+    ...args: UPM.MessageRequestParams<ReqMap, Type>
   ): Promise<R> {
     assert(!!this.childProcess_, "The process is not running")
     const messageId = this.generateMessageId(),
-      pending: UPM.PendingRequestMessage<MessageArgs, Type, R> = {
+      pending: UPM.PendingRequestMessage<ReqMap, Type, R> = {
         deferred: new Deferred<R>(),
         messageId,
-        timeoutId: setTimeout(() => this.removePendingMessage(messageId), timeout)
+        timeoutId: setTimeout(() => this.removePendingMessage(messageId), UPM.Defaults.RequestTimeout)
       }
 
     this.pendingMessages_.set(messageId, pending)
-    const payload: UPM.NodeMessage<MessageArgs, Type> = {
+    const payload: UPM.NodeMessage<ReqMap, Type> = {
       channel: UPM.IPCChannel.UPMServiceMessage,
-      payload: { type, messageId, data, kind: UPM.MessageKind.Request }
+      payload: { type, messageId, args, kind: UPM.MessageKind.Request }
     }
 
-    port.postMessage(payload)
+    this.childProcess_.postMessage(payload)
 
     try {
       const result = await pending.deferred.promise

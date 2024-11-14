@@ -25,22 +25,27 @@ export namespace UPM {
     UPMNodeRequestResponse = "UPMNodeRequestResponseMessage",
   }
   
-  export type MessageArgs = {}
-  // export type MessageRequestMap = {}
+  export type MessageRequestFnBase = (...args:any[]) => Promise<any>
+  export type MessageRequestMap = {}
+  export type MessageRequestNames<ReqMap extends MessageRequestMap> = keyof ReqMap
+  export type MessageRequestFn<ReqMap extends MessageRequestMap, Name extends MessageRequestNames<ReqMap>> = ReqMap[Name] extends MessageRequestFnBase ? ReqMap[Name] : never
+  export type MessageRequestParams<ReqMap extends MessageRequestMap, Name extends MessageRequestNames<ReqMap>> = ReqMap[Name] extends MessageRequestFnBase ? Parameters<ReqMap[Name]> : never
+  export type MessageRequestReturnType<ReqMap extends MessageRequestMap, Name extends MessageRequestNames<ReqMap>> = ReqMap[Name] extends MessageRequestFnBase ? ReturnType<ReqMap[Name]> : never
   
-  export type MessageArgNames<Args extends MessageArgs> = keyof Args
-  export type MessageArgData<Args extends MessageArgs, Name extends MessageArgNames<Args>> = Args[Name]
-  // export type MessageRequestNames<Args extends MessageRequestMap> = keyof Args
-  // export type MessageRequestParams<Args extends MessageRequestMap, Name extends MessageArgNames<Args>> = Args[Name]
   export interface Message<
-    Args extends MessageArgs = any,
-    Type extends MessageArgNames<Args> = MessageArgNames<Args>
+    ReqMap extends MessageRequestMap = any,
+    Type extends MessageRequestNames<ReqMap> = MessageRequestNames<ReqMap>,
+    Args extends MessageRequestParams<ReqMap, Type> = MessageRequestParams<ReqMap, Type>,
+    R extends MessageRequestReturnType<ReqMap, Type> = MessageRequestReturnType<ReqMap, Type>
   >
   {
     type: Type;
     kind: MessageKind;
     messageId: number;
-    data: MessageArgData<Args, Type>;
+    //data?: any
+    eventData?: any
+    args?: Args
+    result?: R
     error?: string
   }
   
@@ -50,20 +55,21 @@ export namespace UPM {
   }
   
   export type RequestHandler<
-    Args extends MessageArgs = any,
-    Type extends MessageArgNames<Args> = MessageArgNames<Args>,
-    R = any
-  > = (type: Type, messageId: number, data: Args[Type]) => Promise<R>
+    ReqMap extends MessageRequestMap = any,
+    Type extends MessageRequestNames<ReqMap> = MessageRequestNames<ReqMap>,
+    Args extends MessageRequestParams<ReqMap, Type> = MessageRequestParams<ReqMap, Type>,
+    R extends MessageRequestReturnType<ReqMap, Type> = MessageRequestReturnType<ReqMap, Type>
+  > = (type: Type, messageId: number, ...args: Args) => Promise<R>
   
   
   export type NodeMessage<
-    Args extends MessageArgs = any,
-    Type extends MessageArgNames<Args> = MessageArgNames<Args>> = NodeEnvelope<Message<Args, Type>>
+    ReqMap extends MessageRequestMap = any,
+    Type extends MessageRequestNames<ReqMap> = MessageRequestNames<ReqMap>> = NodeEnvelope<Message<ReqMap, Type>>
   
   export interface PendingRequestMessage<
-    Args extends UPM.MessageArgs = any,
-    Type extends UPM.MessageArgNames<Args> = UPM.MessageArgNames<Args>,
-    R = any
+    ReqMap extends UPM.MessageRequestMap = any,
+    Type extends UPM.MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>,
+    R extends MessageRequestReturnType<ReqMap, Type> = MessageRequestReturnType<ReqMap, Type>
   >
   {
     deferred: Deferred<R>
@@ -89,27 +95,30 @@ export namespace UPM {
   export type Port = MessagePort | Electron.MessagePortMain | Electron.ParentPort | UtilityProcess
   
   export interface IServiceClient<
-    Args extends MessageArgs,
-    MType extends MessageArgNames<Args> = UPM.MessageArgNames<Args>
+    ReqMap extends MessageRequestMap,
+    MType extends MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>
   >
   {
     sendEvent(data: any): void
     
-    executeRequest<Type extends MType, R = any>(
+    executeRequest<
+      Type extends MType,
+      R extends MessageRequestReturnType<ReqMap, Type> = MessageRequestReturnType<ReqMap, Type>
+    >(
       type: Type,
-      data: MessageArgData<Args, Type>
+      ...args: MessageRequestParams<ReqMap, Type>
     ): Promise<R>
     
     close(): void
     
-    whenReady(): Promise<IServiceClient<Args, MType>>
+    whenReady(): Promise<IServiceClient<ReqMap, MType>>
   }
   
   //
   export class PortServiceClient<
-    Args extends MessageArgs,
-    MType extends MessageArgNames<Args> = UPM.MessageArgNames<Args>
-  > implements IServiceClient<Args, MType> {
+    ReqMap extends MessageRequestMap,
+    MType extends MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>
+  > implements IServiceClient<ReqMap, MType> {
     
     private lastMessageId_: number = 0
     
@@ -135,12 +144,12 @@ export namespace UPM {
       const
         payloadOrEnvelope = (isDefined(payloadOrEnvelopeOrData?.["data"]) ?
           payloadOrEnvelopeOrData["data"] :
-          payloadOrEnvelopeOrData) as UPM.Message<Args, Type> | UPM.NodeMessage<Args, Type>,
+          payloadOrEnvelopeOrData) as UPM.Message<ReqMap, Type> | UPM.NodeMessage<ReqMap, Type>,
         [channel, payload] =
           (isDefined(payloadOrEnvelope?.["payload"]) ?
           [payloadOrEnvelope["channel"] ?? IPCChannel.UPMServiceMessage, payloadOrEnvelope["payload"]] :
-          [IPCChannel.UPMServiceMessage, payloadOrEnvelope]) as [string, UPM.Message<Args, Type>],
-        { type, kind, messageId, data, error } = payload
+          [IPCChannel.UPMServiceMessage, payloadOrEnvelope]) as [string, UPM.Message<ReqMap, Type>],
+        { type, kind, messageId, result, error } = payload
       
       try {
         const pending = this.pendingMessages_.get(messageId)
@@ -159,7 +168,7 @@ export namespace UPM {
           pending.deferred.reject(new Error(error))
           return
         }
-        pending.deferred.resolve(data)
+        pending.deferred.resolve(result)
         this.removePendingMessage(messageId)
       } catch (err) {
         log.error(`Failed to handle message`, err)
@@ -177,22 +186,24 @@ export namespace UPM {
       this.port.postMessage(payload)
     }
     
-    async executeRequest<Type extends MType, R = any>(
+    async executeRequest<
+      Type extends MType,
+      R extends MessageRequestReturnType<ReqMap, Type> = MessageRequestReturnType<ReqMap, Type>
+    >(
       type: Type,
-      data: MessageArgData<Args, Type>,
-      timeout: number = Defaults.RequestTimeout
+      ...args: MessageRequestParams<ReqMap, Type>
     ): Promise<R> {
       const messageId = this.generateMessageId(),
-        pending: UPM.PendingRequestMessage<Args, Type, R> = {
+        pending: UPM.PendingRequestMessage<ReqMap, Type, R> = {
           deferred: new Deferred<R>(),
           messageId,
-          timeoutId: setTimeout(() => this.removePendingMessage(messageId), timeout)
+          timeoutId: setTimeout(() => this.removePendingMessage(messageId), Defaults.RequestTimeout)
         }
       
       this.pendingMessages_.set(messageId, pending)
-      const payload: UPM.NodeMessage<Args, Type> = {
+      const payload: UPM.NodeMessage<ReqMap, Type> = {
         channel: UPM.IPCChannel.UPMServiceMessage,
-        payload: { type, messageId, data, kind: UPM.MessageKind.Request }
+        payload: { type, messageId, args, kind: UPM.MessageKind.Request }
       }
       
       this.port.postMessage(payload)
@@ -216,7 +227,11 @@ export namespace UPM {
     
     constructor(readonly clientId: string, readonly port: UPM.Port) {
       if (isMessagePort(port) || isUtilityProcess(port)) {
-        port.on("message", this.onMessage.bind(this))
+        if (isFunction(port?.["addEventListener"])) {
+          ;(port as any).addEventListener("message", this.onMessage.bind(this))
+        } else {
+          port.on("message", this.onMessage.bind(this))
+        }
         if (isMessagePort(port))
           port.start()
       } else {
