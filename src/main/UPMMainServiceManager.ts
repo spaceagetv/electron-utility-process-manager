@@ -1,5 +1,5 @@
 import { ipcMain } from "electron"
-import { assert } from "@3fv/guard"
+import { assert, isString } from "@3fv/guard"
 import { Future } from "@3fv/prelude-ts"
 import { UPM } from "../UPMTypes"
 import UPMMainService from "./UPMMainService"
@@ -44,15 +44,33 @@ export class UPMMainServiceManager {
     }
   }
   
-  createMainClient(serviceName: string, clientId: string) {
-    const proc = this.getService(serviceName)
-    if (!proc) {
-      throw Error(`no proc found for ${serviceName}`)
-    }
+  createMainChannel
+  <
+    Args extends UPM.MessageArgs = any,
+    MType extends UPM.MessageArgNames<Args> = UPM.MessageArgNames<Args>,
+  >
+  (serviceOrName: string | UPMMainService<Args, MType>, clientId: string): UPM.Port {
     try {
-      const clientPort = proc.createMessageChannel(clientId)
-      log.info(`Received client port for proc (id=${serviceName},clientId=${clientId})`)
+      const service = isString(serviceOrName) ? this.getService<Args,MType>(serviceOrName) : serviceOrName
+      
+      const clientPort = service.createMessageChannel(clientId)
+      log.info(`Received client port for proc (id=${service.serviceName},clientId=${clientId})`)
       return clientPort
+    } catch (err) {
+      log.error(`failed to register new client`, err)
+      throw err
+    }
+  }
+  
+  createMainClient<
+    Args extends UPM.MessageArgs = any,
+    MType extends UPM.MessageArgNames<Args> = UPM.MessageArgNames<Args>,
+  >(serviceName: string, clientId: string) {
+    const service = this.getService<Args,MType>(serviceName)
+    assert(!!service,`no proc found for ${serviceName}`)
+    
+    try {
+      return service.createMainClient(clientId)
     } catch (err) {
       log.error(`failed to register new client`, err)
       throw err

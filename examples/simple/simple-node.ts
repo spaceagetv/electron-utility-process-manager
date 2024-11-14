@@ -9,9 +9,9 @@ upmNodeProcess.addEventHandler((clientId, port, payload) => {
   return true
 })
 
-upmNodeProcess.addRequestHandler("heartbeat", async (type, messageId, data) => {
-  log.info(`Heartbeat request received (${messageId})`, data)
-  return true
+upmNodeProcess.addRequestHandler("ping", async (type, messageId, data) => {
+  log.info(`Ping request received (${messageId})`, data)
+  return `pong: ${data}`
 })
 // Child process
 //process.parentPort.on('message', (ev) => {

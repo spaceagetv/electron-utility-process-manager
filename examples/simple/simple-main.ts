@@ -1,7 +1,7 @@
 // Modules to control application life and create native browser window
 import { app, BrowserWindow, MessageChannelMain, utilityProcess } from "electron"
 import { UPM } from "@3fv/electron-utility-process-manager"
-import type {UPMMainService} from "@3fv/electron-utility-process-manager/main"
+import type { UPMMainService } from "@3fv/electron-utility-process-manager/main"
 
 import Tracer from "tracer"
 import Path from "path"
@@ -18,7 +18,7 @@ let upmService: UPMMainService = null
  *
  * @returns {Promise<void>}
  */
-async function createWindow (): Promise<void> {
+async function createWindow(): Promise<void> {
   const mainWindow = new BrowserWindow({
     width: 1000,
     height: 1000,
@@ -32,7 +32,7 @@ async function createWindow (): Promise<void> {
   
   // Load the sample page
   const htmlFile = Path.resolve(__dirname, "..", "..", "..", "examples", "simple", "simple-renderer.html")
-  mainWindow.webContents.openDevTools({mode: "right"})
+  mainWindow.webContents.openDevTools({ mode: "right" })
   
   await mainWindow.loadFile(htmlFile)
   
@@ -44,35 +44,40 @@ async function start() {
   const upmManager = upm.upmMainServiceManager
   Object.assign(global, {
     upm,
-    upmManager,
+    upmManager
   })
   
-  console.info("UPM manager ready, now creating service", upmManager)
-  upmService = await upmManager.createService("simple",Path.join(__dirname, "simple-node.js"))
-  console.info("UPM service ready")
+  log.info("UPM manager ready, now creating service", upmManager)
+  upmService = await upmManager.createService("simple", Path.join(__dirname, "simple-node.js"))
+  log.info("UPM service ready")
   
-  upmService.sendEvent("test123")
-  
-  const clientPort = upmManager.createMainClient("simple", "client1")
-  clientPort.start()
-  clientPort.postMessage({channel: UPM.IPCChannel.UPMServiceMessage, payload: {kind: UPM.MessageKind.Event, messageId: -1, data: {test: "test456"}}})
-  // const { port1, port2 } = new MessageChannelMain()
+  // upmService.sendEvent("test123")
   //
-  // const child = utilityProcess.fork(path.join(__dirname, 'utility-process.js'))
-  // child.postMessage({ message: 'here-is-your-port' }, [port1])
-  // port2.start()
-  // child.on("message", ev => {
-  //   log.info("Main child message received", ev)
+  // const clientPort = upmManager.createMainChannel("simple", "main-channel-01")
+  // log.info("Start the client port")
+  // if (UPM.isMessagePort(clientPort))
+  //   clientPort.start()
   //
-  // } )
-  // port2.on("message", ev => {
-  //   log.info("Main received message ON PORT", ev)
-  //   port2.postMessage({name: "test123"})
+  // log.info("Post a message directly")
+  // clientPort.postMessage({
+  //   channel: UPM.IPCChannel.UPMServiceMessage,
+  //   payload: { kind: UPM.MessageKind.Event, messageId: -1, data: { test: "test456" } }
   // })
+  //
+  // log.info("Send event via the UPMMainService wrapper")
+  // upmService.sendEvent({ test: "test789" }, clientPort)
+  //
+  log.info(`Creating port client`)
+  const client = upmManager.createMainClient("simple", "main-client-01")
+  log.info(`Send request/response: ping`)
   
+  const pongResult = await client.executeRequest("ping", "main")
+  log.info(`Received request/response`, pongResult)
+  
+  log.info(`Create the window/renderer`)
   await createWindow()
   
-  app.on('activate', function () {
+  app.on("activate", function() {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 }
@@ -83,8 +88,8 @@ app.whenReady().then(start)
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
-app.on('window-all-closed', function () {
-  if (process.platform !== 'darwin') app.quit()
+app.on("window-all-closed", function() {
+  if (process.platform !== "darwin") app.quit()
 })
 
 // In this file you can include the rest of your app's specific main process

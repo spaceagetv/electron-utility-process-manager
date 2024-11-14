@@ -10,20 +10,6 @@ import Tracer from "tracer"
 const log = Tracer.colorConsole()
 const isNotEmpty = negate(isEmpty)
 
-const DefaultUtilityProcessRequestTimeout = 120000
-
-interface PendingRequestMessage<
-    Args extends UPM.MessageArgs = any,
-    Type extends UPM.MessageArgNames<Args> = UPM.MessageArgNames<Args>,
-    R = any
-> {
-  deferred: Deferred<R>
-
-  timeoutId: ReturnType<typeof setTimeout>
-
-  messageId: number
-}
-
 export interface UPMMainServiceConfig {}
 
 export type UPMMainServiceOptions = Partial<UPMMainServiceConfig>
@@ -44,7 +30,7 @@ export class UPMMainService<
 
   private childProcess_: UtilityProcess = null
 
-  private pendingMessages_ = new Map<number, PendingRequestMessage>()
+  private pendingMessages_ = new Map<number, UPM.PendingRequestMessage>()
 
   private messageChannels_ = new Map<string, MessageChannelMain>()
 
@@ -138,10 +124,6 @@ export class UPMMainService<
 
     this.messageChannels_.set(clientId, channel)
     try {
-      // port2.on("message", this.onMessage.bind(this))
-      // port2.on("close", () => this.onPortClose(clientId, channel))
-      // port2.start()
-
       this.childProcess_.postMessage(
         {
           message: {
@@ -158,6 +140,17 @@ export class UPMMainService<
     }
     return port2
   }
+  
+  /**
+   * Create a port client for the main process
+   * (useful to avoid congestion on default child_process channel)
+   *
+   * @param {string} clientId
+   * @returns {UPM.PortServiceClient<MessageArgs, MessageType>}
+   */
+  createMainClient(clientId: string): UPM.PortServiceClient<MessageArgs, MessageType> {
+    return new UPM.PortServiceClient(clientId, this.createMessageChannel(clientId))  
+  }
 
   private onPortClose(id: string, channel: MessageChannelMain) {
     log.info(`main side of message channel(id=${id}) closed`)
@@ -169,9 +162,7 @@ export class UPMMainService<
       this.messageChannels_.delete(id)
     }
 
-    getValue(() => channel.port1.close())
-    getValue(() => channel.port2.close())
-    //channel.removeAllListeners()
+    ;[channel.port1,channel.port2].forEach(p => getValue(() => p.close()))
   }
 
   close(): void {
@@ -205,12 +196,12 @@ export class UPMMainService<
   async executeRequest<Type extends MessageType, R = any>(
     type: Type,
     data: UPM.MessageArgData<MessageArgs, Type>,
-    port: MessagePort | UtilityProcess = this.childProcess_,
-    timeout: number = DefaultUtilityProcessRequestTimeout
+    port: UPM.Port = this.childProcess_,
+    timeout: number = UPM.Defaults.RequestTimeout
   ): Promise<R> {
     assert(!!this.childProcess_, "The process is not running")
     const messageId = this.generateMessageId(),
-      pending: PendingRequestMessage<MessageArgs, Type, R> = {
+      pending: UPM.PendingRequestMessage<MessageArgs, Type, R> = {
         deferred: new Deferred<R>(),
         messageId,
         timeoutId: setTimeout(() => this.removePendingMessage(messageId), timeout)
