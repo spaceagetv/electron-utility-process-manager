@@ -72,9 +72,9 @@
     "package.json"
   ],
   "dependencies": {
-    "@3fv/deferred": "latest",
-    "@3fv/guard": "latest",
-    "@3fv/prelude-ts": "latest",
+    "@3fv/deferred": "^1.2.12",
+    "@3fv/guard": "^1.4.38",
+    "@3fv/prelude-ts": "^0.8.32",
     "chalk": "^5.3.0",
     "debug": "^4.3.6",
     "lodash": "^4.17.21",
