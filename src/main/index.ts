@@ -1,2 +1,2 @@
-export * from "./UPMMainServiceManager"
-export * from "./UPMMainService"
+export * from "./UPMMainServiceManager.js"
+export * from "./UPMMainService.js"

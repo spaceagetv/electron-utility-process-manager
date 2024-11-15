@@ -1,5 +1,5 @@
 import { isDefined, isFunction } from "@3fv/guard"
-import { isMessagePort, isUtilityProcess } from "./guards"
+import { isMessagePort, isUtilityProcess } from "./guards.js"
 import Tracer from "tracer"
 import {
   Defaults,
@@ -10,7 +10,7 @@ import {
   MessageRequestParams,
   MessageRequestReturnType, NodeEnvelope, NodeMessage,
   PendingRequestMessage, Port
-} from "./types"
+} from "./types.js"
 import { Deferred } from "@3fv/deferred"
 
 const log = Tracer.colorConsole()
@@ -32,6 +32,12 @@ export interface IMessageClient<
   MType extends MessageRequestNames<ReqMap> = MessageRequestNames<ReqMap>
 >
 {
+  
+  /**
+   * Get the clientId for the underlying port
+   */
+  get clientId(): string
+  
   /**
    * A very low level function for sending `any` data
    * to the `utilityProcess`
@@ -182,7 +188,7 @@ export class MessagePortClient<
     const messageId = this.generateMessageId()
     const payload: NodeEnvelope = {
       channel: IPCChannel.UPMServiceMessage,
-      payload: { messageId, data, kind: MessageKind.Event }
+      payload: { messageId, eventData: data, kind: MessageKind.Event }
     }
     
     this.port.postMessage(payload)

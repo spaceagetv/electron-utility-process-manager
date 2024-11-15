@@ -1,8 +1,8 @@
 import { ipcMain } from "electron"
 import { assert, isString } from "@3fv/guard"
 import { Future } from "@3fv/prelude-ts"
-import * as UPM from "../common"
-import UPMMainService from "./UPMMainService"
+import * as UPM from "../common/index.js"
+import UPMMainService from "./UPMMainService.js"
 
 import Tracer from "tracer"
 

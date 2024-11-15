@@ -1,4 +1,4 @@
-import * as UPM from "../common"
+import * as UPM from "../common/index.js"
 import { Deferred } from "@3fv/deferred"
 import { ipcRenderer } from "electron"
 import { assert } from "@3fv/guard"

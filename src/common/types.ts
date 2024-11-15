@@ -55,7 +55,7 @@ export type RequestHandler<
   Type extends MessageRequestNames<ReqMap> = MessageRequestNames<ReqMap>,
   Args extends MessageRequestParams<ReqMap, Type> = MessageRequestParams<ReqMap, Type>,
   R extends MessageRequestReturnType<ReqMap, Type> = MessageRequestReturnType<ReqMap, Type>
-> = (type: Type, messageId: number, ...args: Args) => Promise<R>
+> = (type: Type, messageId: number, ...args: Args) => R
 
 
 export type NodeMessage<

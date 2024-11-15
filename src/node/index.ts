@@ -1,3 +1,3 @@
-import UPMNodeProcess from "./UPMNodeProcess"
-export * from "./UPMNodeProcess"
+import UPMNodeProcess from "./UPMNodeProcess.js"
+export * from "./UPMNodeProcess.js"
 export default UPMNodeProcess

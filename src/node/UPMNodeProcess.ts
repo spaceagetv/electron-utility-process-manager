@@ -1,21 +1,18 @@
 import { assert, isPromise } from "@3fv/guard"
 import { match } from "ts-pattern"
-import * as UPM from "../common"
+import * as UPM from "../common/index.js"
 import Tracer from "tracer"
 import { Future } from "@3fv/prelude-ts"
 
 const log = Tracer.colorConsole()
 
-export class UPMNodeProcess<
-  ReqMap extends UPM.MessageRequestMap = any,
-  MType extends UPM.MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>
->
+export class UPMNodeProcess
 {
   readonly processPort = process.parentPort
   
   private readonly clientPorts_ = new Map<string, Electron.MessagePortMain>()
   
-  private readonly requestHandlers_ = new Map<MType, UPM.RequestHandler<ReqMap, MType>>()
+  private readonly requestHandlers_ = new Map<string, UPM.RequestHandler>()
   
   private readonly eventHandlers_ = Array<UPM.EventHandler>()
   
@@ -58,7 +55,7 @@ export class UPMNodeProcess<
           
           const handler = this.requestHandlers_.get(type)
           const result = await handler(type, messageId, ...args as any),
-            msg:UPM.NodeMessage<ReqMap, MType> = {
+            msg:UPM.NodeMessage = {
               channel: UPM.IPCChannel.UPMServiceMessage,
               payload: {
                   type,
@@ -71,7 +68,7 @@ export class UPMNodeProcess<
           port.postMessage(msg)
         } catch (err) {
           log.error(`Unable to handle message`, err)
-          const msg:UPM.NodeMessage<ReqMap, MType> = {
+          const msg:UPM.NodeMessage = {
             channel: UPM.IPCChannel.UPMServiceMessage,
             payload:
               {
@@ -130,9 +127,12 @@ export class UPMNodeProcess<
     this.processPort.on("message", (message: Electron.MessageEvent) => this.onMessage(this.processPort, message))
   }
   
-  addRequestHandler<Type extends MType>(type: Type, handler: UPM.RequestHandler<ReqMap, Type>) {
+  addRequestHandler<
+    ReqMap extends UPM.MessageRequestMap = any,
+    Type extends UPM.MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>
+  >(type: Type, handler: UPM.RequestHandler<ReqMap, Type>) {
     log.info(`Registering request handler for type (${type.toString()})`)
-    this.requestHandlers_.set(type, handler)
+    this.requestHandlers_.set(type as string, handler)
   }
   
   addEventHandler(handler: UPM.EventHandler) {

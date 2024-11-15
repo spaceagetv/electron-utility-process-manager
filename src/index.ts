@@ -1,5 +1,5 @@
-export * from "./common"
-import * as UPM from "./common"
+export * from "./common/index.js"
+import * as UPM from "./common/index.js"
 
 export {
   UPM

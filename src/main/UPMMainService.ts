@@ -2,11 +2,10 @@ import { app, MessageChannelMain, MessagePortMain, utilityProcess, UtilityProces
 import { assert, getValue, isString } from "@3fv/guard"
 import Fsx from "fs-extra"
 import { Deferred } from "@3fv/deferred"
-import * as UPM from "../common"
+import * as UPM from "../common/index.js"
 import { isEmpty, negate } from "lodash"
-
 import Tracer from "tracer"
-import { IServiceClient } from "../common"
+import { IServiceClient } from "../common/index.js"
 
 const log = Tracer.colorConsole()
 const isNotEmpty = negate(isEmpty)
@@ -21,6 +20,9 @@ export class UPMMainService<
 > implements UPM.IMessageClient<
   ReqMap, MType
 > {
+  
+  readonly clientId: string = "main"
+  
   private readonly config_: UPMMainServiceConfig
 
   private readyDeferred_: Deferred<this> = null
@@ -197,7 +199,7 @@ export class UPMMainService<
     const messageId = this.generateMessageId()
     const payload: UPM.NodeEnvelope = {
       channel: UPM.IPCChannel.UPMServiceMessage,
-      payload: { messageId, data, kind: UPM.MessageKind.Event }
+      payload: { messageId, eventData: data, kind: UPM.MessageKind.Event }
     }
 
     port.postMessage(payload)

@@ -1,4 +1,4 @@
-import UPMRendererClientFactory from "./UPMRendererClientFactory"
+import UPMRendererClientFactory from "./UPMRendererClientFactory.js"
 
-export * from "./UPMRendererClientFactory"
+export * from "./UPMRendererClientFactory.js"
 export default UPMRendererClientFactory

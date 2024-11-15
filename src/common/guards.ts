@@ -1,6 +1,6 @@
 import type { UtilityProcess } from "electron"
 import { isFunction } from "@3fv/guard"
-import { Port } from "./types"
+import { Port } from "./types.js"
 
 export function isMessagePort(port: Port): port is Electron.MessagePortMain {
   return isFunction(port?.["close"])
