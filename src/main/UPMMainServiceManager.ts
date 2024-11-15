@@ -8,6 +8,8 @@ import Tracer from "tracer"
 
 const log = Tracer.colorConsole()
 
+
+
 export class UPMMainServiceManager {
   private services_ = new Map<string, UPMMainService<any,any>>()
 
@@ -105,16 +107,18 @@ export class UPMMainServiceManager {
    *
    * @param serviceName
    * @param entryFile
+   * @param options
    */
   async createService<
     ReqMap extends UPM.MessageRequestMap,
     Type extends UPM.MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>
-  >(serviceName: string, entryFile: string): Promise<UPMMainService<ReqMap,Type>> {
+  >(serviceName: string, entryFile: string, options: UPM.CreateServiceOptions = {}): Promise<UPMMainService<ReqMap,Type>> {
     assert(!this.services_.has(serviceName), `utility process with id (${serviceName}) is already registered`)
     const proc = new UPMMainService(serviceName, entryFile, {
-      serviceName
+      ...options,
+      serviceName: options.serviceName ?? serviceName,
     })
-
+    
     this.services_.set(serviceName, proc)
     
     try {

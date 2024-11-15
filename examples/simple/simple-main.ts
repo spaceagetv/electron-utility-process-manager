@@ -49,7 +49,14 @@ async function start() {
   })
   
   log.info("UPM manager ready, now creating service", upmManager)
-  upmService = await upmManager.createService("simple", Path.join(__dirname, "simple-node.js"))
+  const entryFile = Path.join(__dirname, "simple-node.js")
+  upmService = await upmManager.createService("simple", entryFile, {
+    // ENABLE DEBUGGING (standard node.js inspect config)
+    // inspect: {
+    //   break: true,
+    //   port: 9449
+    // }
+  })
   log.info("UPM service ready")
   
   upmService.sendEvent("test123")
@@ -72,7 +79,7 @@ async function start() {
   const client = upmManager.createMainClient("simple", "main-client-01")
   log.info(`Send request/response: ping`)
   
-  const pongResult = await client.executeRequest("ping", ["main"])
+  const pongResult = await client.executeRequest("ping", "main")
   log.info(`Received pong response`, pongResult)
   
   log.info(`Create the window/renderer`)

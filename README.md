@@ -1,10 +1,9 @@
-# @3fv/electron-utility-process-manager
----
+# Electron UPM (Utility Process Manager)
 
 ## Overview
 
-`@3fv/electron-utility-process-manager` manages `1..n` `Electron.utilityProcess` instances/services/processes via a 
-single library & provides fully typed client facades automatically 
+`@3fv/electron-utility-process-manager` manages `1..n` `Electron.utilityProcess` instances/services/processes via a
+single library & provides fully typed client facades automatically
 
 ## Install
 
@@ -14,21 +13,42 @@ yarn add @3fv/electron-utility-process-manager
 
 ## Usage
 
-This library integrates into the `node`, `main` and `renderer` processes to provide 
+This library integrates into the `node`, `main` and `renderer` processes to provide
 transparent access from any process to a `node` (`Electron.utilityProcess`).
 
-### Possible Use-cases 
+### Possible Use-cases
 
 - main -> node
 - renderer -> node
 - node -> node
+
+
+### Debugging Config (Applies to all examples)
+
+In order to debug a service/utility process, simply add the following to
+the `options` argument passed to `createService`
+
+```typescript
+// ENABLE DEBUGGING (standard node.js inspect config)
+const options = {
+  inspect: {
+    break: true, 
+    port: 9449
+  }
+}
+upmMainServiceManager.createService("example-service", "/path/to/entry.js", options)
+```
+> NOTE: If `break` is `true` the utility/service process
+>  will not be paused until a debugger is attached.
+>  the process will print a chrome debugging url (i.e. `ws://`)
+
 
 ### Examples
 
 #### Simple Example
 
 > NOTE: The simple example uses the bare-bones approach
-> and basically avoids typing wherever possible.  For a 
+> and basically avoids typing wherever possible. For a
 > fully typed example, checkout the [complex example](#complex-example)
 
 ##### Node/Utility Process ([simple-node.ts](examples/simple/simple-node.ts))
@@ -41,13 +61,13 @@ upmNodeProcess.addEventHandler((clientId, port, payload) => {
   return true
 })
 
-upmNodeProcess.addRequestHandler("ping", async (type, messageId, what: string) => {
+upmNodeProcess.addRequestHandler("ping", async (type, messageId, what:string) => {
   console.info(`Ping request received (${messageId})`, what)
   return `pong: ${what}`
 })
 ```
 
-##### Main Process ([simple-main.ts](examples/simple/simple-main.ts)) 
+##### Main Process ([simple-main.ts](examples/simple/simple-main.ts))
 
 ```typescript
 import { app, BrowserWindow } from "electron"
@@ -55,15 +75,14 @@ import { UPM } from "@3fv/electron-utility-process-manager"
 import type { UPMMainService } from "@3fv/electron-utility-process-manager/main"
 import Path from "path"
 
-let upmService: UPMMainService = null
+let upmService:UPMMainService = null
 
 async function start() {
   const upm = await import("@3fv/electron-utility-process-manager/main")
   const upmManager = upm.upmMainServiceManager
   
   Object.assign(global, {
-    upm,
-    upmManager
+    upm, upmManager
   })
   
   console.info("UPM manager ready, now creating service", upmManager)
@@ -74,8 +93,7 @@ async function start() {
   
   const clientPort = upmManager.createMainChannel("simple", "main-channel-01")
   console.info("Start the client port")
-  if (UPM.isMessagePort(clientPort))
-    clientPort.start()
+  if (UPM.isMessagePort(clientPort)) clientPort.start()
   
   console.info("Post a message directly")
   clientPort.postMessage({
@@ -90,7 +108,7 @@ async function start() {
   const client = upmManager.createMainClient("simple", "main-client-01")
   console.info(`Send request/response: ping`)
   
-  const pongResult = await client.executeRequest("ping", ["main"])
+  const pongResult = await client.executeRequest("ping", "main")
   console.info(`Received pong response`, pongResult)
   
   await createWindow()
@@ -110,15 +128,10 @@ async function start() {
  *
  * @returns {Promise<void>}
  */
-async function createWindow(): Promise<void> {
+async function createWindow():Promise<void> {
   const mainWindow = new BrowserWindow({
-    width: 1000,
-    height: 1000,
-    webPreferences: {
-      contextIsolation: false,
-      nodeIntegration: true,
-      sandbox: false,
-      devTools: true
+    width: 1000, height: 1000, webPreferences: {
+      contextIsolation: false, nodeIntegration: true, sandbox: false, devTools: true
     }
   })
   
@@ -144,13 +157,13 @@ import UPMRendererClientFactory from "@3fv/electron-utility-process-manager/rend
 document.querySelector("#root").innerHTML = `simple-renderer-example`
 
 async function simpleExampleUPM() {
-  const client = await UPMRendererClientFactory.createClient("simple",`${process.type}-01`)
-  const result = await client.executeRequest("ping", [process.type])
+  const client = await UPMRendererClientFactory.createClient("simple", `${process.type}-01`)
+  const result = await client.executeRequest("ping", process.type)
   console.info(`Result: ${result}`)
 }
 
 simpleExampleUPM()
-  .catch(err => console.error(`renderer error: ${err.message}`, err))
+    .catch(err => console.error(`renderer error: ${err.message}`, err))
 
 export {}
 ```

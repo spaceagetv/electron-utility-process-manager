@@ -1,115 +1,98 @@
-import { app, MessageChannelMain, MessagePortMain, utilityProcess, UtilityProcess } from "electron"
-import { assert, getValue, isString } from "@3fv/guard"
+import {
+  app, MessageChannelMain, MessagePortMain, utilityProcess, UtilityProcess
+} from "electron"
+import { assert, getValue, isNumber, isString } from "@3fv/guard"
 import Fsx from "fs-extra"
 import { Deferred } from "@3fv/deferred"
 import * as UPM from "../common/index.js"
-import { isEmpty, negate } from "lodash"
+import { defaults, isEmpty, negate } from "lodash"
 import Tracer from "tracer"
-import { IServiceClient } from "../common/index.js"
+import { asOption } from "@3fv/prelude-ts"
+import { match } from "ts-pattern"
 
 const log = Tracer.colorConsole()
 const isNotEmpty = negate(isEmpty)
 
-export interface UPMMainServiceConfig {}
-
-export type UPMMainServiceOptions = Partial<UPMMainServiceConfig>
-
-export class UPMMainService<
-  ReqMap extends UPM.MessageRequestMap = any,
-  MType extends UPM.MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>
-> implements UPM.IMessageClient<
-  ReqMap, MType
-> {
+/**
+ * Contains & Manages a `Utility/Process`
+ * providing simplified messaging & event
+ * propagation.
+ */
+export class UPMMainService<ReqMap extends UPM.MessageRequestMap = any, MType extends UPM.MessageRequestNames<ReqMap> = UPM.MessageRequestNames<ReqMap>> implements UPM.IMessageClient<ReqMap, MType> {
   
-  readonly clientId: string = "main"
+  /**
+   * As this container/wrapper implements
+   * `IMessageClient`, it needs to provide
+   * a `clientId`, which is constant in the
+   * main process
+   */
+  readonly clientId:string = "main"
   
-  private readonly config_: UPMMainServiceConfig
-
-  private readyDeferred_: Deferred<this> = null
-
-  private killDeferred_: Deferred<number> = null
-
-  private lastMessageId_ = 0
-
-  private childProcess_: UtilityProcess = null
-
-  private pendingMessages_ = new Map<number, UPM.PendingRequestMessage>()
-
-  private messageChannels_ = new Map<string, MessageChannelMain>()
-
-  private async init(): Promise<this> {
-    let deferred = this.readyDeferred_
-    if (deferred) {
-      return deferred.promise
-    }
-    deferred = this.readyDeferred_ = new Deferred()
-
-    try {
-      const exitListener = (code: number) => {
-        if (code !== 0) {
-          deferred.reject(new Error(`process exited with code ${code} upon starting`))
-        }
-      }
-      const spawnListener = async () => {
-        this.childProcess_.off("exit", exitListener)
-        this.childProcess_.on("message", this.onMessage.bind(this))
-        deferred.resolve(this)
-      }
-
-      this.childProcess_ = utilityProcess
-        .fork(this.entryFile, [], {
-          serviceName: this.serviceName,
-          env: {
-            ...process.env,
-            IN_CHILD_PROCESS: "true",
-            APP_NAME: app.name
-          }
-        })
-        .on("spawn", spawnListener)
-        .on("exit", exitListener)
-
-      await deferred.promise
-    } catch (err) {
-      deferred.reject(err)
+  /**
+   * Send an event as `fire-and-forget`
+   *
+   * @param data
+   * @param port
+   */
+  sendEvent(data:any, port:UPM.Port = this.childProcess_):void {
+    const messageId = this.generateMessageId()
+    const payload:UPM.NodeEnvelope = {
+      channel: UPM.IPCChannel.UPMServiceMessage,
+      payload: { messageId, eventData: data, kind: UPM.MessageKind.Event }
     }
     
-    return deferred.promise
+    port.postMessage(payload)
   }
-
-  private onMessage<Type extends MType = any>(payload: UPM.Message<ReqMap, Type>) {
-    const { type, kind, messageId, result, error } = payload
-
+  
+  /**
+   * Send request
+   *
+   * @param type
+   * @param args
+   */
+  async executeRequest<Type extends MType, R extends UPM.MessageRequestReturnType<ReqMap, Type> = UPM.MessageRequestReturnType<ReqMap, Type>>(
+      type:Type,
+      ...args:UPM.MessageRequestParams<ReqMap, Type>
+  ):Promise<R> {
+    assert(!!this.childProcess_, "The process is not running")
+    const messageId = this.generateMessageId(),
+        pending:UPM.PendingRequestMessage<ReqMap, Type, R> = {
+          deferred: new Deferred<R>(),
+          messageId,
+          timeoutId: setTimeout(
+              () => this.removePendingMessage(messageId),
+              UPM.Defaults.RequestTimeout
+          )
+        }
+    
+    this.pendingMessages_.set(messageId, pending)
+    const payload:UPM.NodeMessage<ReqMap, Type> = {
+      channel: UPM.IPCChannel.UPMServiceMessage,
+      payload: { type, messageId, args, kind: UPM.MessageKind.Request }
+    }
+    
+    this.childProcess_.postMessage(payload)
+    
     try {
-      const pending = this.pendingMessages_.get(messageId)
-      if (!pending) {
-        log.info(`Unable to find pending record ${messageId}`)
-        return
-      }
-
-      if (pending.deferred.isSettled()) {
-        log.error(`Already settled record ${messageId}`)
-        return
-      }
-
-      this.removePendingMessage(messageId)
-      if (!!error) {
-        log.error(error)
-        pending.deferred.reject(new Error(error))
-        return
-      }
-      pending.deferred.resolve(result)
+      const result = await pending.deferred.promise
+      log.debug(`Completed utility request (messageId=${messageId})`)
+      return result
     } catch (err) {
-      log.error(`Failed to handle message`, err)
+      log.error(`Failed utility request (messageId=${messageId})`, err)
+      throw err
     }
   }
   
+  close():void {
+    log.warn("Close has no effect when called via the main process")
+  }
   
   /**
    * Resolves when ready
    *
    * @returns {any}
    */
-  whenReady(): Promise<UPM.IMessageClient<ReqMap, MType>> {
+  whenReady():Promise<UPM.IMessageClient<ReqMap, MType>> {
     return this.init()
   }
   
@@ -117,42 +100,71 @@ export class UPMMainService<
    * Return a simple proxy facade wrapping
    * `executeRequest` into individual methods
    */
-  getServiceClient(): IServiceClient<ReqMap, MType> {
-    return new Proxy<IServiceClient<ReqMap, MType>>({} as any, {
+  getServiceClient():UPM.IServiceClient<ReqMap, MType> {
+    return new Proxy<UPM.IServiceClient<ReqMap, MType>>({} as any, {
       get: (_target, prop) => {
         if (prop === "then") {
           return undefined
         }
-        return (...args: any[]) => this.whenReady()
-          .then(client => client.executeRequest(prop as MType, ...args as any))
+        return (...args:any[]) => this.whenReady()
+            .then(client => client.executeRequest(
+                prop as MType,
+                ...args as any
+            ))
         
       }
     })
   }
-
+  
+  private readonly config_:UPM.CreateServiceConfig
+  
+  private readyDeferred_:Deferred<this> = null
+  
+  private killDeferred_:Deferred<number> = null
+  
+  private messageIdSeq_ = 0
+  
+  private childProcess_:UtilityProcess = null
+  
+  private pendingMessages_ = new Map<number, UPM.PendingRequestMessage>()
+  
+  private messageChannels_ = new Map<string, MessageChannelMain>()
+  
+  private onServiceExit(code:number) {
+    log.warn(`Service Exit (code=${code})`)
+    let deferred = this.killDeferred_
+    if (deferred) {
+      if (!deferred.isSettled()) {
+        deferred.resolve(code)
+      } else {
+        log.warn(`kill deferred is already settled (code=${code})`)
+      }
+      return
+    }
+    this.killDeferred_ = Deferred.resolve(code)
+    
+    this.cancelAllPendingMessages()
+    this.removeAllMessageChannels()
+  }
+  
   /**
    * Returned client side port (for Renderer)
    * @param clientId
    */
-  createMessageChannel(clientId: string): MessagePortMain {
+  createMessageChannel(clientId:string):MessagePortMain {
     assert(
-      this.readyDeferred_?.isFulfilled() ?? false,
-      `Service (${this.serviceName}) is not fulfilled or has an error (${this.readyDeferred_.status()})`
+        this.readyDeferred_?.isFulfilled() ?? false,
+        `Service (${this.serviceName}) is not fulfilled or has an error (${this.readyDeferred_.status()})`
     )
-    const channel = new MessageChannelMain(),
-      { port1, port2 } = channel
-
+    const channel = new MessageChannelMain(), { port1, port2 } = channel
+    
     this.messageChannels_.set(clientId, channel)
     try {
-      this.childProcess_.postMessage(
-        {
-          message: {
-            channel: UPM.IPCChannel.UPMServiceNewClient,
-            payload: { clientId }
-          }
-        },
-        [port1]
-      )
+      this.childProcess_.postMessage({
+        message: {
+          channel: UPM.IPCChannel.UPMServiceNewClient, payload: { clientId }
+        }
+      }, [port1])
     } catch (err) {
       log.error(`Unable to create channel id=${clientId}`, err)
       this.closeMessageChannel(clientId, channel)
@@ -166,177 +178,274 @@ export class UPMMainService<
    * (useful to avoid congestion on default child_process channel)
    *
    * @param {string} clientId
-   * @returns {UPM.MessagePortClient<MessageRequestMap, MessageType>}
+   * @returns {UPM.MessagePortClient}
    */
-  createMainClient(clientId: string): UPM.MessagePortClient<ReqMap, MType> {
-    return new UPM.MessagePortClient(clientId, this.createMessageChannel(clientId))
+  createMainClient(clientId:string):UPM.MessagePortClient<ReqMap, MType> {
+    return new UPM.MessagePortClient(
+        clientId,
+        this.createMessageChannel(clientId)
+    )
   }
-
-  private onPortClose(id: string, channel: MessageChannelMain) {
+  
+  /**
+   * Service is still in a healthy/running/runnable state
+   */
+  get isRunning() {
+    return !this.killDeferred_
+  }
+  
+  /**
+   * Stop the service (kill)
+   */
+  async stop():Promise<void> {
+    await this.kill()
+  }
+  
+  /**
+   * Resource management & cleanup
+   */
+  async [Symbol.asyncDispose]() {
+    await this.stop()
+  }
+  
+  /**
+   * Initialize the service
+   *
+   * @private
+   */
+  private async init():Promise<this> {
+    let deferred = this.readyDeferred_
+    if (deferred) {
+      return deferred.promise
+    }
+    deferred = this.readyDeferred_ = new Deferred()
+    
+    try {
+      const exitListener = (code:number) => {
+        if (code !== 0) {
+          deferred.reject(new Error(`process exited with code ${code} upon starting`))
+        }
+      }
+      const spawnListener = async () => {
+        this.childProcess_.off("exit", exitListener)
+        this.childProcess_.on("exit", this.onServiceExit.bind(this))
+        this.childProcess_.on("message", this.onMessage.bind(this))
+        deferred.resolve(this)
+      }
+      
+      // BUILD ADDITIONAL FORK OPTIONS
+      const childProcessOptions = asOption(this.config_.inspect)
+          .filter(it => it !== false)
+          .map(it => (
+              {
+                execArgv: [
+                  match(it as UPM.ServiceInspectConfig)
+                      .when(isNumber, port => `--inspect=${port}`)
+                      .otherwise(({ port, break: shouldBreak }) => {
+                        const ext = shouldBreak ? "-brk" : ""
+                        return `--inspect${ext}=${port}`
+                      })
+                ]
+              }
+          ))
+          .getOrElse({} as any)
+      
+      // FORK
+      this.childProcess_ = utilityProcess
+          .fork(this.entryFile, [], {
+            ...childProcessOptions, serviceName: this.serviceName, env: {
+              ...process.env, IN_CHILD_PROCESS: "true", APP_NAME: app.name
+            }
+          })
+          .on("spawn", spawnListener)
+          .on("exit", exitListener)
+      
+      await deferred.promise
+    } catch (err) {
+      deferred.reject(err)
+    }
+    
+    return deferred.promise
+  }
+  
+  /**
+   * OnMessage really only handles `results` from
+   * `executeRequest(...)`; this may be expanded in
+   * the future
+   *
+   * @param payload
+   * @private
+   */
+  private onMessage<Type extends MType = any>(payload:UPM.Message<ReqMap, Type>) {
+    const { messageId, result, error } = payload
+    
+    try {
+      const pending = this.pendingMessages_.get(messageId)
+      if (!pending) {
+        log.info(`Unable to find pending record ${messageId}`)
+        return
+      }
+      
+      if (pending.deferred.isSettled()) {
+        log.error(`Already settled record ${messageId}`)
+        return
+      }
+      
+      this.removePendingMessage(messageId)
+      if (!!error) {
+        log.error(error)
+        pending.deferred.reject(new Error(error))
+        return
+      }
+      pending.deferred.resolve(result)
+    } catch (err) {
+      log.error(`Failed to handle message`, err)
+    }
+  }
+  
+  /**
+   * This handler is currently unused, but
+   * could be attached to a `MessagePort.on('close')`
+   * event
+   *
+   * @param id
+   * @param channel
+   * @private
+   */
+  // noinspection JSUnusedLocalSymbols
+  private onPortClose(id:string, channel:MessageChannelMain) {
     log.info(`main side of message channel(id=${id}) closed`)
     this.closeMessageChannel(id, channel)
   }
-
-  private closeMessageChannel(id: string, channel: MessageChannelMain) {
+  
+  /**
+   * Close a message channel
+   *
+   * @param id
+   * @param channel
+   * @private
+   */
+  private closeMessageChannel(id:string, channel:MessageChannelMain) {
     if (this.messageChannels_.has(id)) {
       this.messageChannels_.delete(id)
     }
-
-    ;[channel.port1,channel.port2].forEach(p => getValue(() => p.close()))
+    
+    Array(channel.port1, channel.port2)
+        .forEach(p => {
+          getValue(() => p.close())
+        })
   }
-
-  close(): void {
-    log.warn("Close has no effect when called via the main process")
-  }
-
+  
   /**
-   * Send an event as `fire-and-forget`
+   * Kill the service
    *
-   * @param data
-   * @param port
+   * @private
    */
-  sendEvent(data: any, port: UPM.Port = this.childProcess_): void {
-    const messageId = this.generateMessageId()
-    const payload: UPM.NodeEnvelope = {
-      channel: UPM.IPCChannel.UPMServiceMessage,
-      payload: { messageId, eventData: data, kind: UPM.MessageKind.Event }
+  private async kill():Promise<number> {
+    if (!this.readyDeferred_ ||
+        !this.readyDeferred_.isSettled() ||
+        !this.childProcess_ ||
+        this.killDeferred_) {
+      log.error("Service is not ready OR the process is not running")
+      // noinspection ES6MissingAwait
+      return this.killDeferred_?.promise ?? Promise.resolve<number>(0)
     }
-
-    port.postMessage(payload)
-  }
-
-  /**
-   * Send request
-   *
-   * @param type
-   * @param args
-   */
-  async executeRequest<
-    Type extends MType,
-    R extends UPM.MessageRequestReturnType<ReqMap,Type> = UPM.MessageRequestReturnType<ReqMap,Type>
-  >(
-    type: Type,
-    ...args: UPM.MessageRequestParams<ReqMap, Type>
-  ): Promise<R> {
-    assert(!!this.childProcess_, "The process is not running")
-    const messageId = this.generateMessageId(),
-      pending: UPM.PendingRequestMessage<ReqMap, Type, R> = {
-        deferred: new Deferred<R>(),
-        messageId,
-        timeoutId: setTimeout(() => this.removePendingMessage(messageId), UPM.Defaults.RequestTimeout)
-      }
-
-    this.pendingMessages_.set(messageId, pending)
-    const payload: UPM.NodeMessage<ReqMap, Type> = {
-      channel: UPM.IPCChannel.UPMServiceMessage,
-      payload: { type, messageId, args, kind: UPM.MessageKind.Request }
-    }
-
-    this.childProcess_.postMessage(payload)
-
-    try {
-      const result = await pending.deferred.promise
-      log.debug(`Completed utility request (messageId=${messageId})`)
-      return result
-    } catch (err) {
-      log.error(`Failed utility request (messageId=${messageId})`, err)
-      throw err
-    }
-  }
-
-  async stop(): Promise<void> {
-    await this.kill()
-  }
-
-  private async kill(): Promise<number> {
-    if (!this.readyDeferred_) {
-      return
-    }
-
-    let killDeferred = this.killDeferred_
-    if (killDeferred) {
-      return killDeferred.promise
-    }
-
-    if (!this.readyDeferred_.isSettled()) {
-      await this.readyDeferred_.promise.catch(err => log.error(`ignoring error`, err))
-    }
-
+    
+    let killDeferred = this.killDeferred_ = new Deferred<number>()
+    
+    // GET THE PROCESS
     const process = this.childProcess_
-    if (!process) {
-      log.error("The process is not running")
-      return 0
-    }
-
+    
+    // CANCEL ALL PENDING MESSAGES & REMOVE ALL CHANNELS
     this.cancelAllPendingMessages()
     this.removeAllMessageChannels()
-    killDeferred = this.killDeferred_ = new Deferred<number>()
+    
     try {
-      process.once("exit", (code: number) => {
-        if (code !== 0) {
-          log.error(`Process exited with code ${code} upon stopping`)
-        }
-        killDeferred.resolve(code)
-      })
       process.kill()
     } catch (err) {
       log.error("Unable to kill utility process", err)
       killDeferred.reject(err)
     }
-
+    
     return await killDeferred.promise
   }
-
+  
+  /**
+   * Close all message channels
+   *
+   * @private
+   */
   private removeAllMessageChannels() {
     for (const [id, channel] of [...this.messageChannels_.entries()]) {
       this.closeMessageChannel(id, channel)
     }
   }
-
-  private cancelAllPendingMessages(): void {
+  
+  /**
+   * Remove all pending messages
+   *
+   * @private
+   */
+  private cancelAllPendingMessages():void {
     for (const key of [...this.pendingMessages_.keys()]) {
       this.removePendingMessage(key)
     }
   }
-
-  constructor(
-    readonly serviceName: string,
-    readonly entryFile: string,
-    options: UPMMainServiceOptions = {}
-  ) {
-    //super()
-    assert(
-      isString(entryFile) && isNotEmpty(entryFile) && Fsx.existsSync(entryFile),
-      `entry file must be provided (${entryFile})`
-    )
-
-    this.config_ = {
-      ...options
-    }
-
-    this.init().catch(err => {
-      log.error(`Failed to init utility process`, err)
-    })
-  }
-
-  private removePendingMessage(messageId: number): void {
+  
+  /**
+   * Remove a pending message from the queue,
+   * whether settled or not
+   *
+   * @param messageId
+   * @private
+   */
+  private removePendingMessage(messageId:number):void {
     const pending = this.pendingMessages_.get(messageId)
     if (!pending) {
       return
     }
     clearTimeout(pending.timeoutId)
     if (!pending.deferred.isSettled()) {
-      pending.deferred.reject("The pending message is being removed before promise is settled")
+      pending.deferred.reject(
+          "The pending message is being removed before promise is settled")
     }
     this.pendingMessages_.delete(messageId)
   }
-
-  private generateMessageId(): number {
-    return this.lastMessageId_++
+  
+  /**
+   * Generate next message id
+   *
+   * @private
+   */
+  private generateMessageId():number {
+    return this.messageIdSeq_++
   }
-
-  async [Symbol.asyncDispose]() {
-    await this.stop()
+  
+  /**
+   * Construct a new service
+   *
+   * @param serviceName
+   * @param entryFile
+   * @param options
+   */
+  constructor(
+      readonly serviceName:string,
+      readonly entryFile:string,
+      options:UPM.CreateServiceOptions = {}
+  ) {
+    assert(isString(entryFile) &&
+        isNotEmpty(entryFile) &&
+        Fsx.existsSync(entryFile), `entry file must be provided (${entryFile})`)
+    
+    this.config_ = defaults({
+      ...options
+    }, {
+      serviceName, inspect: false
+    })
+    
+    this.init().catch(err => {
+      log.error(`Failed to init utility process`, err)
+    })
   }
 }
 

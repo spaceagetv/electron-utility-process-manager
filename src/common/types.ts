@@ -1,5 +1,4 @@
 import type { UtilityProcess } from "electron"
-import { isDefined, isFunction, isString } from "@3fv/guard"
 import { Deferred } from "@3fv/deferred"
 
 
@@ -26,7 +25,7 @@ export type MessageRequestMap = {}
 export type MessageRequestNames<ReqMap extends MessageRequestMap> = keyof ReqMap
 export type MessageRequestFn<ReqMap extends MessageRequestMap, Name extends MessageRequestNames<ReqMap>> = ReqMap[Name] extends MessageRequestFnBase ? ReqMap[Name] : never
 export type MessageRequestParams<ReqMap extends MessageRequestMap, Name extends MessageRequestNames<ReqMap>> = ReqMap[Name] extends MessageRequestFnBase ? Parameters<ReqMap[Name]> : never
-export type MessageRequestReturnType<ReqMap extends MessageRequestMap, Name extends MessageRequestNames<ReqMap>> = ReqMap[Name] extends MessageRequestFnBase ? ReturnType<ReqMap[Name]> : never
+export type MessageRequestReturnType<ReqMap extends MessageRequestMap, Name extends MessageRequestNames<ReqMap>> = ReqMap[Name] extends MessageRequestFnBase ? Awaited<ReturnType<ReqMap[Name]>> : never
 
 export interface Message<
   ReqMap extends MessageRequestMap = any,
@@ -38,7 +37,6 @@ export interface Message<
   type: Type;
   kind: MessageKind;
   messageId: number;
-  //data?: any
   eventData?: any
   args?: Args
   result?: R
@@ -55,7 +53,7 @@ export type RequestHandler<
   Type extends MessageRequestNames<ReqMap> = MessageRequestNames<ReqMap>,
   Args extends MessageRequestParams<ReqMap, Type> = MessageRequestParams<ReqMap, Type>,
   R extends MessageRequestReturnType<ReqMap, Type> = MessageRequestReturnType<ReqMap, Type>
-> = (type: Type, messageId: number, ...args: Args) => R
+> = (type: Type, messageId: number, ...args: Args) => Promise<R>
 
 
 export type NodeMessage<
@@ -80,4 +78,29 @@ export interface PendingRequestMessage<
  */
 export type EventHandler = (clientId: string, port: Port, payload: any) => boolean
 
+/**
+ * Port of any kind
+ */
 export type Port = MessagePort | Electron.MessagePortMain | Electron.ParentPort | UtilityProcess
+
+/**
+ * Debugging & Inspection config
+ */
+export type ServiceInspectConfig = number | {
+  port: number
+  break?: boolean
+}
+
+/**
+ * Configuration to use when creating/launching
+ * a service (`Electron.UtilityProcess`)
+ */
+export interface CreateServiceConfig {
+  serviceName: string
+  inspect: false | ServiceInspectConfig
+}
+
+/**
+ * Optional/Partial `CreateServiceConfig`
+ */
+export type CreateServiceOptions = Partial<CreateServiceConfig>
