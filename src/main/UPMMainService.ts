@@ -154,7 +154,7 @@ export class UPMMainService<ReqMap extends UPM.MessageRequestMap = any, MType ex
   createMessageChannel(clientId:string):MessagePortMain {
     assert(
         this.readyDeferred_?.isFulfilled() ?? false,
-        `Service (${this.serviceName}) is not fulfilled or has an error (${this.readyDeferred_.status()})`
+        `Service (${this.serviceName}) is not fulfilled or has an error`
     )
     const channel = new MessageChannelMain(), { port1, port2 } = channel
     
