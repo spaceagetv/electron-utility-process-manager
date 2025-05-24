@@ -39,16 +39,16 @@
   "typesVersions": {
     "*": {
       "node": [
-        "./lib/node/index.d.ts"
+        "./lib/cjs/node/index.d.ts"
       ],
       "main": [
-        "./lib/main/index.d.ts"
+        "./lib/cjs/main/index.d.ts"
       ],
       "renderer": [
-        "./lib/renderer/index.d.ts"
+        "./lib/cjs/renderer/index.d.ts"
       ],
       "common": [
-        "./lib/common/index.d.ts"
+        "./lib/cjs/common/index.d.ts"
       ]
     }
   },
