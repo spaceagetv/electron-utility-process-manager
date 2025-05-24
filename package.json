@@ -39,16 +39,16 @@
   "typesVersions": {
     "*": {
       "node": [
-        "./dist/node/index.d.ts"
+        "./lib/node/index.d.ts"
       ],
       "main": [
-        "./dist/main/index.d.ts"
+        "./lib/main/index.d.ts"
       ],
       "renderer": [
-        "./dist/renderer/index.d.ts"
+        "./lib/renderer/index.d.ts"
       ],
       "common": [
-        "./dist/common/index.d.ts"
+        "./lib/common/index.d.ts"
       ]
     }
   },
