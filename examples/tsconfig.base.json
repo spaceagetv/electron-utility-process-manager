@@ -1,12 +1,11 @@
 {
 	"compilerOptions": {
-		"target": "ESNext",
+		"target": "es2017",
 		"lib": [
 			"DOM",
 			"esnext"
 		],
-//		"rootDir": ".",
-		"module": "ESNext",
+		"module": "CommonJS",
 		"moduleResolution": "node",
 		"moduleDetection": "auto",
 		"declaration": true,
@@ -18,13 +17,22 @@
 		"experimentalDecorators": true,
 		"preserveConstEnums": true,
 		"allowSyntheticDefaultImports": true,
-		"sourceMap": true
+		"sourceMap": true,
+		"paths": {
+			"@3fv/electron-utility-process-manager/common": [
+				"../dist/common"
+			],
+			"@3fv/electron-utility-process-manager/main": [
+				"../dist/main"
+			],
+			"@3fv/electron-utility-process-manager/node": [
+				"../dist/node"
+			],
+			"@3fv/electron-utility-process-manager/renderer": [
+				"../dist/renderer"
+			],
+		}
 	},
 	"compileOnSave": true,
-	
-	"exclude": [
-		"lib",
-		"node_modules"
-	]
-	
+
 }

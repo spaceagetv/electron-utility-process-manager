@@ -1,6 +1,6 @@
 // Modules to control application life and create native browser window
 import { app, BrowserWindow } from "electron"
-import { UPM } from "@3fv/electron-utility-process-manager"
+import { isMessagePort, IPCChannel, MessageKind } from "@3fv/electron-utility-process-manager/common"
 import type { UPMMainService } from "@3fv/electron-utility-process-manager/main"
 
 import Tracer from "tracer"
@@ -29,14 +29,14 @@ async function createWindow(): Promise<void> {
       devTools: true
     }
   })
-  
+
   // Load the sample page
-  const htmlFile = Path.resolve(__dirname, "..", "..", "..", "examples", "simple", "simple-renderer.html")
+  const htmlFile = Path.resolve("simple-renderer.html")
   mainWindow.webContents.openDevTools({ mode: "right" })
-  
+
   await mainWindow.loadFile(htmlFile)
-  
-  
+
+
 }
 
 async function start() {
@@ -47,7 +47,7 @@ async function start() {
     upm,
     upmManager
   })
-  
+
   log.info("UPM manager ready, now creating service", upmManager)
   const entryFile = Path.join(__dirname, "simple-node.js")
   upmService = await upmManager.createService("simple", entryFile, {
@@ -58,18 +58,18 @@ async function start() {
     // }
   })
   log.info("UPM service ready")
-  
+
   upmService.sendEvent("test123")
 
   const clientPort = upmManager.createMainChannel("simple", "main-channel-01")
   log.info("Start the client port")
-  if (UPM.isMessagePort(clientPort))
+  if (isMessagePort(clientPort))
     clientPort.start()
 
   log.info("Post a message directly")
   clientPort.postMessage({
-    channel: UPM.IPCChannel.UPMServiceMessage,
-    payload: { kind: UPM.MessageKind.Event, messageId: -1, data: { test: "test456" } }
+    channel: IPCChannel.UPMServiceMessage,
+    payload: { kind: MessageKind.Event, messageId: -1, data: { test: "test456" } }
   })
 
   log.info("Send event via the UPMMainService wrapper")
@@ -78,13 +78,13 @@ async function start() {
   log.info(`Creating port client`)
   const client = upmManager.createMainClient("simple", "main-client-01")
   log.info(`Send request/response: ping`)
-  
+
   const pongResult = await client.executeRequest("ping", "main")
   log.info(`Received pong response`, pongResult)
-  
+
   log.info(`Create the window/renderer`)
   await createWindow()
-  
+
   app.on("activate", function() {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

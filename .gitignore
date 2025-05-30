@@ -1,8 +1,6 @@
 target
 /.vscode
 test-results.*
-lib
-lib-examples
 dist
 yarn.lock
 ### JetBrains template
@@ -92,3 +90,5 @@ jspm_packages
 /.idea/redis-manager-config.xml
 /.idea/runConfigurations.xml
 .DS_Store
+
+tsconfig.tsbuildinfo
